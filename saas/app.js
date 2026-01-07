@@ -1,36 +1,82 @@
 document.addEventListener('DOMContentLoaded', () => {
+    // ==========================================
+    // CONTROL DE SUSCRIPCIÓN (MODIFICAR CADA MES)
+    // ==========================================
+    const CONFIG_PAGO = {
+        cliente: "Nombre del Cliente",
+        fechaVencimiento: "2026-02-10", // Formato: AAAA-MM-DD
+        whatsappSoporte: "521XXXXXXXXXX", // Tu número para que te paguen
+        diasAviso: 3 // Cuántos días antes mostrar el recordatorio
+    };
+
+    // Lógica de Validación de Acceso
+    const hoy = new Date();
+    const vencimiento = new Date(CONFIG_PAGO.fechaVencimiento + 'T23:59:59');
+    const tiempoRestante = vencimiento - hoy;
+    const diasRestantes = Math.ceil(tiempoRestante / (1000 * 60 * 60 * 24));
+
+    // 1. Bloqueo Total si venció
+    if (hoy > vencimiento) {
+        document.body.innerHTML = `
+            <div class="flex flex-col items-center justify-center h-screen bg-[#020617] text-white p-10 text-center">
+                <div class="w-24 h-24 bg-rose-500/20 text-rose-500 rounded-full flex items-center justify-center text-4xl mb-6 animate-bounce">
+                    <i class="fas fa-lock"></i>
+                </div>
+                <h1 class="text-4xl font-black mb-4 tracking-tighter uppercase">Suscripción Vencida</h1>
+                <p class="text-slate-400 max-w-md mb-8 font-medium">El acceso para <b>${CONFIG_PAGO.cliente}</b> ha sido suspendido por falta de pago o vencimiento de contrato.</p>
+                <a href="https://wa.me/${CONFIG_PAGO.whatsappSoporte}?text=Hola, quiero renovar mi suscripción de Core System" 
+                   class="bg-indigo-600 px-10 py-4 rounded-2xl font-black uppercase text-sm shadow-xl shadow-indigo-600/40 hover:scale-105 transition-all">
+                   Contactar Soporte para Renovar
+                </a>
+            </div>
+        `;
+        return; // Detiene la ejecución del resto de la app
+    }
+
+    // 2. Banner de Aviso (Si falta poco para vencer)
+    if (diasRestantes <= CONFIG_PAGO.diasAviso && diasRestantes >= 0) {
+        const banner = document.createElement('div');
+        banner.className = "fixed top-0 left-0 w-full bg-amber-500 text-black text-[10px] font-black uppercase py-2 text-center z-[9999] tracking-widest";
+        banner.innerHTML = `⚠️ RECORDATORIO: TU SUSCRIPCIÓN VENCE EN ${diasRestantes} DÍAS. <a href="https://wa.me/${CONFIG_PAGO.whatsappSoporte}" class="underline ml-2">PAGAR AHORA</a>`;
+        document.body.prepend(banner);
+    }
+
+    // ==========================================
+    // LÓGICA DE LA APLICACIÓN (NO CAMBIAR)
+    // ==========================================
     let db = {
-        apps: JSON.parse(localStorage.getItem('NX_DATA')) || [],
-        tpl: localStorage.getItem('NX_TPL') || "Hola {cliente}, recordatorio de tu cita: {servicio} el {fecha} a las {hora}."
+        apps: JSON.parse(localStorage.getItem('CORE_DATA')) || [],
+        tpl: localStorage.getItem('CORE_TPL') || "Hola {cliente}, recordatorio de tu cita: {servicio} el {fecha} a las {hora}."
     };
 
     const sync = () => {
-        localStorage.setItem('NX_DATA', JSON.stringify(db.apps));
-        localStorage.setItem('NX_TPL', db.tpl);
+        localStorage.setItem('CORE_DATA', JSON.stringify(db.apps));
+        localStorage.setItem('CORE_TPL', db.tpl);
         render();
         updateStats();
     };
 
-    // Navegación
+    // Navegación de Pestañas
     document.querySelectorAll('[data-tab]').forEach(btn => {
         btn.onclick = () => {
             document.querySelectorAll('.sidebar-btn').forEach(b => b.classList.remove('active'));
             document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
             btn.classList.add('active');
             document.getElementById(btn.dataset.tab).classList.add('active');
-            if (btn.dataset.tab === 'tab-timeline') renderTimeline();
+            if(btn.dataset.tab === 'tab-timeline') renderTimeline();
         };
     });
 
-    // Renderizado Lista
+    // Renderizado de Lista de Citas
     function render() {
         const list = document.getElementById('app-list');
+        if(!list) return;
         list.innerHTML = '';
 
-        db.apps.sort((a, b) => new Date(a.date) - new Date(b.date)).forEach(app => {
+        db.apps.sort((a,b) => new Date(a.date) - new Date(b.date)).forEach(app => {
             let badge = "bg-slate-500/10 text-slate-500";
-            if (app.status === 'Llegó') badge = "bg-emerald-500/10 text-emerald-400";
-            if (app.status === 'Canceló') badge = "bg-rose-500/10 text-rose-400";
+            if(app.status === 'Llegó') badge = "bg-emerald-500/10 text-emerald-400";
+            if(app.status === 'Canceló') badge = "bg-rose-500/10 text-rose-400";
 
             list.innerHTML += `
                 <tr class="hover:bg-white/[0.01] transition-all group">
@@ -44,7 +90,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     </td>
                     <td class="px-8 py-6">
                         <div class="text-white text-xs font-bold">${new Date(app.date).toLocaleDateString()}</div>
-                        <div class="text-[10px] text-slate-500 font-bold">${new Date(app.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} HRS</div>
+                        <div class="text-[10px] text-slate-500 font-bold uppercase">${new Date(app.date).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})} HRS</div>
                     </td>
                     <td class="px-8 py-6">
                         <span class="px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest ${badge}">${app.status || 'Pendiente'}</span>
@@ -69,63 +115,62 @@ document.addEventListener('DOMContentLoaded', () => {
 
         db.apps.forEach(a => {
             let p = parseFloat(a.price) || 0;
-            if (a.status === 'Llegó') { rev += p; llegados++; }
-            if (a.status === 'Canceló') cancelados++;
+            if(a.status === 'Llegó') { rev += p; llegados++; }
+            if(a.status === 'Canceló') cancelados++;
             services[a.service] = (services[a.service] || 0) + 1;
         });
 
-        // Dashboard
-        document.getElementById('dash-rev').innerText = `$${rev.toLocaleString()}`;
-        document.getElementById('dash-count').innerText = count;
-        document.getElementById('dash-avg').innerText = llegados ? `$${(rev / llegados).toFixed(0)}` : '$0';
+        if(document.getElementById('dash-rev')) {
+            document.getElementById('dash-rev').innerText = `$${rev.toLocaleString()}`;
+            document.getElementById('dash-count').innerText = count;
+            document.getElementById('dash-avg').innerText = llegados ? `$${(rev/llegados).toFixed(0)}` : '$0';
+        }
 
-        // Pestaña Estadísticas Grid
         const grid = document.getElementById('stats-grid');
-        grid.innerHTML = `
-            <div class="glass-card p-8">
-                <p class="text-[10px] font-black text-slate-500 uppercase mb-2">Ingresos Totales</p>
-                <h3 class="text-4xl font-black">$${rev.toLocaleString()}</h3>
-            </div>
-            <div class="glass-card p-8">
-                <p class="text-[10px] font-black text-slate-500 uppercase mb-2">Citas Registradas</p>
-                <h3 class="text-4xl font-black text-indigo-500">${count}</h3>
-            </div>
-            <div class="glass-card p-8">
-                <p class="text-[10px] font-black text-slate-500 uppercase mb-2">Ticket Promedio</p>
-                <h3 class="text-4xl font-black text-emerald-500">$${llegados ? (rev / llegados).toFixed(0) : 0}</h3>
-            </div>
-        `;
-
-        // Barras
-        const percL = count ? Math.round((llegados / count) * 100) : 0;
-        const percC = count ? Math.round((cancelados / count) * 100) : 0;
-        document.getElementById('stats-bars').innerHTML = `
-            <div>
-                <div class="flex justify-between text-[10px] font-black mb-2"><span>COMPLETADOS</span><span>${percL}%</span></div>
-                <div class="w-full bg-white/5 h-2 rounded-full overflow-hidden"><div class="bg-emerald-500 h-full" style="width:${percL}%"></div></div>
-            </div>
-            <div>
-                <div class="flex justify-between text-[10px] font-black mb-2"><span>CANCELADOS</span><span>${percC}%</span></div>
-                <div class="w-full bg-white/5 h-2 rounded-full overflow-hidden"><div class="bg-rose-500 h-full" style="width:${percC}%"></div></div>
-            </div>
-        `;
-
-        const best = Object.keys(services).reduce((a, b) => services[a] > services[b] ? a : b, "Ninguno");
-        document.getElementById('stat-best-service').innerText = best;
+        if(grid) {
+            grid.innerHTML = `
+                <div class="glass-card p-8">
+                    <p class="text-[10px] font-black text-slate-500 uppercase mb-2">Ingresos Totales</p>
+                    <h3 class="text-4xl font-black">$${rev.toLocaleString()}</h3>
+                </div>
+                <div class="glass-card p-8">
+                    <p class="text-[10px] font-black text-slate-500 uppercase mb-2">Citas Registradas</p>
+                    <h3 class="text-4xl font-black text-indigo-500">${count}</h3>
+                </div>
+                <div class="glass-card p-8">
+                    <p class="text-[10px] font-black text-slate-500 uppercase mb-2">Ticket Promedio</p>
+                    <h3 class="text-4xl font-black text-emerald-500">$${llegados ? (rev/llegados).toFixed(0) : 0}</h3>
+                </div>
+            `;
+            const percL = count ? Math.round((llegados/count)*100) : 0;
+            const percC = count ? Math.round((cancelados/count)*100) : 0;
+            document.getElementById('stats-bars').innerHTML = `
+                <div>
+                    <div class="flex justify-between text-[10px] font-black mb-2"><span>COMPLETADOS</span><span>${percL}%</span></div>
+                    <div class="w-full bg-white/5 h-2 rounded-full overflow-hidden"><div class="bg-emerald-500 h-full" style="width:${percL}%"></div></div>
+                </div>
+                <div>
+                    <div class="flex justify-between text-[10px] font-black mb-2"><span>CANCELADOS</span><span>${percC}%</span></div>
+                    <div class="w-full bg-white/5 h-2 rounded-full overflow-hidden"><div class="bg-rose-500 h-full" style="width:${percC}%"></div></div>
+                </div>
+            `;
+            const best = Object.keys(services).reduce((a, b) => services[a] > services[b] ? a : b, "Ninguno");
+            document.getElementById('stat-best-service').innerText = best;
+        }
     }
 
-    // AGENDA MAESTRA (Reparada)
+    // Agenda Maestra
     function renderTimeline() {
         const container = document.getElementById('timeline-container');
         const dateInput = document.getElementById('timeline-date').value || new Date().toISOString().split('T')[0];
-        if (!container) return;
+        if(!container) return;
         container.innerHTML = '';
 
-        for (let h = 8; h <= 20; h++) {
+        for(let h=8; h<=20; h++) {
             const slotApps = db.apps.filter(a => a.date.startsWith(dateInput) && new Date(a.date).getHours() === h);
             container.innerHTML += `
                 <div class="glass-card p-4 flex items-center gap-6 border-white/5 hover:bg-white/[0.02] transition-all">
-                    <div class="w-20 text-right"><span class="text-[10px] font-black text-indigo-500">${h}:00</span></div>
+                    <div class="w-20 text-right"><span class="text-[10px] font-black text-indigo-500 tracking-widest">${h}:00</span></div>
                     <div class="flex-1 flex gap-3 min-h-[40px] items-center border-l border-white/10 pl-6">
                         ${slotApps.length > 0 ? slotApps.map(a => `<div class="bg-indigo-600/20 border border-indigo-500/40 px-4 py-2 rounded-xl text-[10px] font-bold text-white">${a.client} - ${a.service}</div>`).join('') : '<span class="text-slate-800 text-[9px] font-bold uppercase tracking-widest">Disponible</span>'}
                     </div>
@@ -133,36 +178,37 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // Funciones Globales
+    // Funciones de Ventana (Globales)
     window.setStatus = (id, s) => { db.apps.find(a => a.id === id).status = s; sync(); };
-    window.deleteApp = (id) => { if (confirm('¿Eliminar permanente?')) { db.apps = db.apps.filter(a => a.id !== id); sync(); } };
-    window.saveTpl = () => { db.tpl = document.getElementById('tpl-text').value; sync(); alert('Guardado'); };
-    window.clearDB = () => { if (confirm('¿Borrar todo?')) { db.apps = []; sync(); } };
-
+    window.deleteApp = (id) => { if(confirm('¿Eliminar permanente?')) { db.apps = db.apps.filter(a => a.id !== id); sync(); } };
+    window.saveTpl = () => { db.tpl = document.getElementById('tpl-text').value; sync(); alert('Plantilla Guardada'); };
+    window.clearDB = () => { if(confirm('¿Borrar todos los datos de este cliente?')) { db.apps = []; sync(); } };
+    
     window.sendWA = (id) => {
         const a = db.apps.find(x => x.id === id);
         const d = new Date(a.date);
-        const msg = db.tpl.replace(/{cliente}/g, a.client).replace(/{servicio}/g, a.service).replace(/{fecha}/g, d.toLocaleDateString()).replace(/{hora}/g, d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
-        window.open(`https://wa.me/${a.phone.replace(/\D/g, '')}?text=${encodeURIComponent(msg)}`, '_blank');
+        const msg = db.tpl.replace(/{cliente}/g, a.client).replace(/{servicio}/g, a.service).replace(/{fecha}/g, d.toLocaleDateString()).replace(/{hora}/g, d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}));
+        window.open(`https://wa.me/${a.phone.replace(/\D/g,'')}?text=${encodeURIComponent(msg)}`, '_blank');
     };
 
     window.exportExcel = () => {
         const ws = XLSX.utils.json_to_sheet(db.apps);
         const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "Data");
-        XLSX.writeFile(wb, "Zenith_Reporte.xlsx");
+        XLSX.utils.book_append_sheet(wb, ws, "Citas");
+        XLSX.writeFile(wb, `Reporte_${CONFIG_PAGO.cliente}.xlsx`);
     };
 
     window.exportPDF = () => {
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF();
-        doc.text("Reporte Zenith Pro", 14, 15);
+        doc.text(`Reporte de Citas - ${CONFIG_PAGO.cliente}`, 14, 15);
         const rows = db.apps.map(a => [a.client, a.service, a.price, a.date, a.status]);
-        doc.autoTable({ head: [['Cliente', 'Servicio', 'Precio', 'Fecha', 'Estado']], body: rows, startY: 20 });
-        doc.save("Reporte.pdf");
+        doc.autoTable({ head:[['Cliente','Servicio','Precio','Fecha','Estado']], body: rows, startY: 20 });
+        doc.save(`Reporte_${CONFIG_PAGO.cliente}.pdf`);
     };
 
-    document.getElementById('timeline-date').addEventListener('change', renderTimeline);
+    // Eventos
+    document.getElementById('timeline-date')?.addEventListener('change', renderTimeline);
 
     document.getElementById('app-form').onsubmit = (e) => {
         e.preventDefault();
@@ -175,10 +221,15 @@ document.addEventListener('DOMContentLoaded', () => {
             date: document.getElementById('f-date').value,
             status: 'Pendiente'
         });
-        sync(); closeModal();
+        sync(); 
+        closeModal();
     };
 
-    window.closeModal = () => { document.getElementById('modal').classList.add('hidden'); document.getElementById('app-form').reset(); };
+    window.closeModal = () => { 
+        document.getElementById('modal').classList.add('hidden'); 
+        document.getElementById('app-form').reset(); 
+    };
+    
     document.getElementById('open-modal').onclick = () => document.getElementById('modal').classList.remove('hidden');
 
     sync();
